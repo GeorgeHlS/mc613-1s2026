@@ -33,7 +33,8 @@ entity dram_iface is
         address : out std_logic_vector(25 downto 0);
         data_to_mem : out std_logic_vector(7 downto 0);
         req     : out std_logic;
-        wEn     : out std_logic
+        wEn     : out std_logic;
+        dbg_state : out std_logic_vector(2 downto 0)
     );
 end entity dram_iface;
 
@@ -175,5 +176,13 @@ begin
     hex1_inst: entity work.hex_decoder port map (value => read_data_reg(3 downto 0), hex => HEX1);
     hex4_inst: entity work.hex_decoder port map (value => "00" & sw_reg(5 downto 4), hex => HEX4);
     hex5_inst: entity work.hex_decoder port map (value => sw_reg(9 downto 6), hex => HEX5);
+
+    -- Debug: encode FSM state
+    dbg_state <= "000" when state = S_READY else
+                 "001" when state = S_REQ_WRITE else
+                 "010" when state = S_WAIT_WRITE else
+                 "011" when state = S_REQ_READ else
+                 "100" when state = S_WAIT_READ else
+                 "111";
 
 end architecture rtl;

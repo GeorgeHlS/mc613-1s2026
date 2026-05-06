@@ -55,6 +55,8 @@ architecture rtl of top_dram_debug is
     signal ctrl_req : std_logic;
     signal ctrl_wEn : std_logic;
 
+    signal iface_dbg_state : std_logic_vector(2 downto 0);
+
 begin
 
     clk <= CLOCK_50;
@@ -86,7 +88,8 @@ begin
             address       => iface_address,
             data_to_mem   => iface_data_to_mem,
             req           => iface_req,
-            wEn           => iface_wEn
+            wEn           => iface_wEn,
+            dbg_state     => iface_dbg_state
         );
 
     u_ctrl: entity work.dram_controller
@@ -120,7 +123,7 @@ begin
     LEDR(4) <= debug_mode;
     LEDR(5) <= ctrl_req;       -- req que chega ao controller
     LEDR(6) <= ctrl_wEn;       -- wEn que chega ao controller
-    LEDR(9 downto 7) <= (others => '0');
+    LEDR(9 downto 7) <= iface_dbg_state;  -- iface FSM: 000=READY, 010=WAIT_WR, 100=WAIT_RD
 
     -- HEX2/HEX3: show raw controller_data_out for debug
     hex2_inst: entity work.hex_decoder port map (value => controller_data_out(3 downto 0), hex => HEX2);
