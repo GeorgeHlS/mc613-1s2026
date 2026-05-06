@@ -95,8 +95,8 @@ begin
     -- DQ tristate
     DRAM_DQ <= dq_out when dq_oe = '1' else (others => 'Z');
 
-    -- DRAM clock follows system clock
-    DRAM_CLK <= clk;
+    -- DRAM clock inverted (180° phase shift for setup/hold timing)
+    DRAM_CLK <= not clk;
 
     -- Map command to output pins
     DRAM_CS_N  <= cmd(3);
@@ -162,10 +162,6 @@ begin
                      ST_WAIT_TDPL | ST_WAIT_TRP | ST_WAIT_TRC |
                      ST_INIT_WAIT_RC | ST_INIT_WAIT_MRD =>
                     counter <= counter + 1;
-
-                when ST_INIT_WAIT_RC =>
-                    -- handled above for counter increment
-                    null; -- init_refresh_cnt handled below
 
                 when others =>
                     counter <= (others => '0');
@@ -338,21 +334,26 @@ begin
                 when ST_READ =>
                     cmd    <= CMD_READ;
                     ba_i   <= latched_addr(25 downto 24);
-                    addr_i <= "00" & latched_addr(10 downto 1);
+                    addr_i <= "000" & latched_addr(10 downto 1);
                     addr_i(10) <= '0';  -- no auto-precharge
-                    if latched_byte_sel = '1' then
-                        ldqm_i <= '1';
-                        udqm_i <= '0';
-                    else
-                        ldqm_i <= '0';
-                        udqm_i <= '1';
-                    end if;
+                    -- DQM=0 for both bytes during read (select byte at capture)
+                    ldqm_i <= '0';
+                    udqm_i <= '0';
 
                 when ST_WAIT_CAS =>
                     cmd <= CMD_NOP;
+                    -- Capture data on the last CAS wait cycle (data valid now)
+                    if counter >= to_unsigned(TCAS - 2, 15) then
+                        if latched_byte_sel = '1' then
+                            data_out_i <= DRAM_DQ(15 downto 8);
+                        else
+                            data_out_i <= DRAM_DQ(7 downto 0);
+                        end if;
+                    end if;
 
                 when ST_READ_CAPTURE =>
                     cmd <= CMD_NOP;
+                    -- Also capture here as backup (data may still be on bus)
                     if latched_byte_sel = '1' then
                         data_out_i <= DRAM_DQ(15 downto 8);
                     else
@@ -362,7 +363,7 @@ begin
                 when ST_WRITE =>
                     cmd    <= CMD_WRITE;
                     ba_i   <= latched_addr(25 downto 24);
-                    addr_i <= "00" & latched_addr(10 downto 1);
+                    addr_i <= "000" & latched_addr(10 downto 1);
                     addr_i(10) <= '0';
                     dq_oe  <= '1';
                     if latched_byte_sel = '1' then

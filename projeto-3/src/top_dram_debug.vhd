@@ -61,8 +61,7 @@ begin
     rst <= not KEY(0);  -- active-low KEY -> active-high reset
 
     debug_mode     <= not SW(9);           -- SW(9)=0 -> debug
-    debug_ready    <= not KEY(1);           -- KEY(1) pressed -> ready=1
-    effective_ready <= debug_ready when debug_mode = '1' else controller_ready;
+    effective_ready <= '1' when debug_mode = '1' else controller_ready;
 
     -- Mask SW(9) for iface, invert KEY(3) (active-low on board)
     iface_sw  <= '0' & SW(8 downto 0);
@@ -119,10 +118,12 @@ begin
     LEDR(2) <= effective_ready;
     LEDR(3) <= controller_ready;
     LEDR(4) <= debug_mode;
-    LEDR(9 downto 5) <= (others => '0');
+    LEDR(5) <= ctrl_req;       -- req que chega ao controller
+    LEDR(6) <= ctrl_wEn;       -- wEn que chega ao controller
+    LEDR(9 downto 7) <= (others => '0');
 
-    -- Unused HEX off
-    HEX2 <= "1111111";
-    HEX3 <= "1111111";
+    -- HEX2/HEX3: show raw controller_data_out for debug
+    hex2_inst: entity work.hex_decoder port map (value => controller_data_out(3 downto 0), hex => HEX2);
+    hex3_inst: entity work.hex_decoder port map (value => controller_data_out(7 downto 4), hex => HEX3);
 
 end architecture rtl;
