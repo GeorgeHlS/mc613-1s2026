@@ -38,10 +38,12 @@ architecture rtl of dram_iface is
 
     -- Address mapping
     signal mapped_address : std_logic_vector(25 downto 0);
+    signal prev_address   : std_logic_vector(25 downto 0);
+    signal addr_changed   : std_logic;
 
-    -- Ready edge detection (rising edge = operation completed)
-    signal ready_prev  : std_logic;
-    signal ready_rose  : std_logic;
+    -- Ready edge detection
+    signal ready_prev : std_logic;
+    signal ready_rose : std_logic;
 
 begin
 
@@ -52,19 +54,26 @@ begin
     mapped_address(20 downto 2)  <= (others => '0');
     mapped_address(1 downto 0)   <= SW(5 downto 4);
 
-    -- Edge detection for KEY(3) write button
+    -- Edge detection
     process(clk, rst)
     begin
         if rst = '1' then
-            key3_prev  <= '0';
-            ready_prev <= '0';
+            key3_prev    <= '0';
+            ready_prev   <= '0';
+            prev_address <= (others => '0');
         elsif rising_edge(clk) then
-            key3_prev  <= KEY(3);
-            ready_prev <= ready;
+            key3_prev    <= KEY(3);
+            ready_prev   <= ready;
+            -- Only update prev_address when IDLE so switch changes during
+            -- an operation don't retrigger
+            if state = S_IDLE then
+                prev_address <= mapped_address;
+            end if;
         end if;
     end process;
-    key3_pulse <= KEY(3) and (not key3_prev);
-    ready_rose <= ready and (not ready_prev);
+    key3_pulse   <= KEY(3) and (not key3_prev);
+    ready_rose   <= ready and (not ready_prev);
+    addr_changed <= '1' when mapped_address /= prev_address and state = S_IDLE else '0';
 
     -- Single process FSM
     process(clk, rst)
@@ -86,42 +95,43 @@ begin
                     req <= '0';
                     wEn <= '0';
                     if key3_pulse = '1' and ready = '1' then
-                        -- Start write operation
+                        -- Write operation (with auto read-back)
                         state       <= S_WRITE;
                         address     <= mapped_address;
                         data_to_mem <= "0000" & SW(3 downto 0);
                         write_data_reg <= SW(3 downto 0);
                         req         <= '1';
                         wEn         <= '1';
+                    elsif addr_changed = '1' and ready = '1' then
+                        -- Auto read on address change
+                        state   <= S_READ;
+                        address <= mapped_address;
+                        req     <= '1';
+                        wEn     <= '0';
                     end if;
 
                 when S_WRITE =>
-                    -- Keep req/wEn high until controller accepts (ready goes low)
                     if ready = '0' then
-                        -- Controller accepted the request
                         req   <= '0';
                         wEn   <= '0';
                         state <= S_WAIT_WRITE;
                     end if;
 
                 when S_WAIT_WRITE =>
-                    -- Wait for write to complete (ready goes high again)
                     if ready_rose = '1' then
-                        -- Write done, now do read-back
+                        -- Write done, auto read-back
                         state   <= S_READ;
                         req     <= '1';
                         wEn     <= '0';
                     end if;
 
                 when S_READ =>
-                    -- Keep req high until controller accepts (ready goes low)
                     if ready = '0' then
                         req   <= '0';
                         state <= S_WAIT_READ;
                     end if;
 
                 when S_WAIT_READ =>
-                    -- Wait for read to complete
                     if ready_rose = '1' then
                         read_data_reg <= data_from_mem;
                         state         <= S_IDLE;
